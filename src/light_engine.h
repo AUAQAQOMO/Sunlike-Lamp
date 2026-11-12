@@ -11,7 +11,8 @@
 //   即 占空比_warm + 占空比_cool <= 1023，总功率恒定、调色温不改变亮度。
 //
 // 亮度曲线：gamma 2.2（感知线性）。20kHz/10bit 下暗端档位有限，
-//   因此亮度下限限制在 2%，并且旋钮步进做了“保证占空比变化 >= 1 级”的自适应。
+//   因此亮度下限限制在 1%（与云端 1~100 档位对齐），并且旋钮步进做了
+//   “保证占空比变化 >= 1 级”的自适应。
 //
 // 渐变：由本类在主循环里按时间插值（每 TWEEN_TICK_MS 写一次占空比），
 //   可以做到秒级的柔和过渡；PWM 波形本身仍由 LEDC 硬件产生。
@@ -22,6 +23,9 @@ public:
 
     // ---- 状态设置 ----
     void setPower(bool on, bool animate = true);
+    // 备用：按占空比距离自适应过渡(25~400ms)。默认不使用（issue #4 要求唤醒走 1.5s 淡入），
+    // 若将来想让“旋钮唤醒”更快，可把 main.cpp 里的 setPower(true) 换成它。
+    void setPowerAdaptive(bool on);
     bool power() const { return on_; }
 
     void setBrightness(float b);       // 0.0 ~ 1.0
@@ -35,6 +39,10 @@ public:
 
     // ---- 主循环调度 ----
     void update();
+
+    // ---- 立即生效（绕过渐变状态机，用于 OTA 关断与长按闪烁提示）----
+    void forceOff();        // 立刻把两路 PWM 写 0，不等 update()
+    void reapplyNow();      // 立刻输出当前目标值，不做渐变
 
     // 状态是否有变化（供持久化与云端上报使用），读取后自动清除
     bool takeDirty();

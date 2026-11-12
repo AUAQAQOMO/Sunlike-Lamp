@@ -57,3 +57,8 @@ void StateStore::save(const LampState &st) {
     cache_     = st;
     has_cache_ = true;
 }
+
+void StateStore::clear() {
+    s_prefs.clear();
+    has_cache_ = false;
+}

@@ -1,4 +1,4 @@
-﻿#include "light_engine.h"
+#include "light_engine.h"
 #include "config.h"
 #include <math.h>
 
@@ -98,7 +98,7 @@ void LightEngine::stepTween() {
     const uint32_t now     = millis();
     const uint32_t elapsed = now - tw_start_;
 
-    if (elapsed >= tw_dur_) {
+    if (elapsed >= tw_dur_ || tw_dur_ <= 1) {
         out_w_     = tw_to_w_;
         out_c_     = tw_to_c_;
         tw_active_ = false;
@@ -152,11 +152,17 @@ void LightEngine::setPower(bool on, bool animate) {
     state_dirty_  = true;
 }
 
+void LightEngine::setPowerAdaptive(bool on) {
+    if (on_ == on) return;
+    on_ = on;
+    next_fade_ms_ = 0;  // 0 触发 update() 中的 fadeMsForDistance 自适应时长(25~400ms)
+    state_dirty_  = true;
+}
+
 void LightEngine::setBrightness(float b) {
     b = clampf(b, BRIGHT_MIN, 1.0f);
     if (fabsf(b - bright_) < 0.0005f) return;
     bright_       = b;
-    next_fade_ms_ = 0;
     state_dirty_  = true;
 }
 
@@ -164,7 +170,6 @@ void LightEngine::setCct(float t) {
     t = clampf(t, 0.0f, 1.0f);
     if (fabsf(t - cct_) < 0.0005f) return;
     cct_          = t;
-    next_fade_ms_ = 0;
     state_dirty_  = true;
 }
 
@@ -175,6 +180,7 @@ void LightEngine::setCct(float t) {
 void LightEngine::nudgeBrightness(int steps) {
     if (steps == 0) return;
 
+    const float prev_b = bright_;
     const float dir = (steps > 0) ? 1.0f : -1.0f;
     int n = (steps > 0) ? steps : -steps;
     if (n > 20) n = 20;                 // 单次最多合并 20 格，避免跳跃过大
@@ -186,13 +192,13 @@ void LightEngine::nudgeBrightness(int steps) {
         for (int k = 0; k < MAX_STEP_TRIES; ++k) {
             float nb = bright_ + dir * STEP_BRIGHT;
             if (nb >= 1.0f) {
+                if (bright_ < 1.0f) moved = true;
                 bright_ = 1.0f;
-                moved   = (before != totalDutyOf(bright_));
                 break;
             }
             if (nb <= BRIGHT_MIN) {
+                if (bright_ > BRIGHT_MIN) moved = true;
                 bright_ = BRIGHT_MIN;
-                moved   = (before != totalDutyOf(bright_));
                 break;
             }
             bright_ = nb;
@@ -204,8 +210,9 @@ void LightEngine::nudgeBrightness(int steps) {
         if (!moved) break;              // 已经到顶或到底
     }
 
-    next_fade_ms_ = 0;
-    state_dirty_  = true;
+    if (fabsf(bright_ - prev_b) >= 0.0005f) {
+        state_dirty_  = true;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -219,8 +226,45 @@ void LightEngine::nudgeCct(int steps) {
     if (fabsf(t - cct_) < 0.0005f) return;
 
     cct_          = t;
-    next_fade_ms_ = 0;
     state_dirty_  = true;
+}
+
+// ---------------------------------------------------------------------------
+// 立即关断硬件输出（不等主循环）
+//   用于 OTA onStart：ArduinoOTA.handle() 会独占 CPU，update() 不再被调度，
+//   必须在这里直接写 LEDC 寄存器，否则升级期间灯会一直亮着。
+// ---------------------------------------------------------------------------
+void LightEngine::forceOff() {
+    tw_active_ = false;
+    out_w_     = 0;
+    out_c_     = 0;
+    // 同时把 target 归零：否则 OTA 中止、主循环恢复后，
+    // calcTarget 得到的仍是旧目标（与 target_ 相同），update() 会认为“已到位”而不再输出，
+    // 灯就会一直黑着。归零后 update() 会自动淡入回原状态。
+    target_w_  = 0;
+    target_c_  = 0;
+
+    pwm_.write(0, 0);
+    pwm_.write(1, 0);
+    // 不改 on_：灯的逻辑开关状态保持原样，重启后按 NVS 记忆恢复
+}
+
+// ---------------------------------------------------------------------------
+// 立即输出当前目标值（不做渐变）
+// ---------------------------------------------------------------------------
+void LightEngine::reapplyNow() {
+    uint32_t w, c;
+    calcTarget(w, c);
+
+    tw_active_    = false;
+    out_w_        = w;
+    out_c_        = c;
+    target_w_     = w;
+    target_c_     = c;
+    next_fade_ms_ = 0;      // 清掉可能残留的一次性时长
+
+    pwm_.write(0, w);
+    pwm_.write(1, c);
 }
 
 bool LightEngine::takeDirty() {

@@ -26,6 +26,7 @@ public:
     uint32_t currentDuty(uint8_t idx) const;
 
 private:
-    bool    ready_   = false;
-    uint8_t gpio_[2] = {0, 0};
+    bool     ready_      = false;
+    uint8_t  gpio_[2]    = {0, 0};
+    uint32_t duty_limit_ = 1023;
 };

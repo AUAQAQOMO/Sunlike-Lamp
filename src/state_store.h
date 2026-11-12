@@ -18,6 +18,7 @@ public:
     void begin();
     LampState load();
     void save(const LampState &st);
+    void clear();   // 恢复出厂设置：清空 NVS 中的记忆键值
 
 private:
     LampState cache_     = { 0.5f, 0.4f, true };

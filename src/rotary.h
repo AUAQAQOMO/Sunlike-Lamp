@@ -24,7 +24,7 @@ public:
     bool takeClick();
     bool takeLongPress();
 
-    bool keyHeld() const { return pressed_; }
+    bool keyHeld() const;
 
 private:
     // ---- 正交解码 ----
@@ -36,6 +36,7 @@ private:
     bool     raw_prev_            = true;   // HIGH = 松开
     uint32_t raw_change_ms_       = 0;
     uint32_t press_ms_            = 0;
+    uint32_t release_ms_          = 0;      // 松开时刻（提供 100ms 锁存缓冲，防止松手误调亮度）
     bool     rotated_since_press_ = false;  // 按下期间旋转过 -> 不判单击/长按
     bool     long_fired_          = false;
     bool     click_pending_       = false;
