@@ -11,6 +11,7 @@
 #include "rotary.h"
 #include "state_store.h"
 #include "app_link.h"
+#include "esp_now_link.h"
 
 // app_link.cpp 里通过 extern 引用这个对象
 LightEngine g_light;
@@ -78,11 +79,17 @@ void setup() {
     // 3) 旋钮与云端
     g_rotary.begin();
     app_link_begin();
+
+    // 4) ESP-NOW（无线旋钮）：必须在 WiFi 初始化之后
+    espnow_link_begin();
 }
 
 void loop() {
     // 云端消息 + OTA
     app_link_run();
+
+    // 执行无线旋钮控制器下发的命令（回调已入队，这里统一落到 LightEngine）
+    espnow_link_poll();
 
     // 旋钮采样（主循环约 1kHz，足够覆盖手转 EC11 的全部边沿）
     g_rotary.poll();
@@ -119,6 +126,7 @@ void loop() {
         Serial.println(F("[KEY] 长按 5s -> 恢复出厂设置并重启"));
         indicateReset();                    // 先闪 3 下给用户确认
         g_store.clear();                    // 清空 NVS 中的亮度/色温/开关记忆
+        espnow_link_clear();                // 同时清除无线旋钮配对（否则新控制器配不上）
         app_link_reset();                   // 清配网信息后重启（不返回）
     }
 

@@ -22,6 +22,7 @@
 #include "app_link.h"
 #include "config.h"
 #include "light_engine.h"
+#include "esp_now_link.h"
 #include "net_provision.h"
 
 extern LightEngine g_light;
@@ -259,6 +260,7 @@ void app_link_run() {
                 // 配网期间切换到过 WIFI_AP，mDNS 已失效；重置标志让主循环重新注册 OTA
                 s_ota_started = false;
                 startWiFi();                // 配网超时返回：回到正常流程继续重试
+                espnow_link_resume();       // AP 模式下 ESP-NOW 已失效，重建
             }
         }
 
